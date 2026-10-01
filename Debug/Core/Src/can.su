@@ -1,0 +1,11 @@
+../Core/Src/can.c:35:6:MX_CAN1_Init	8	static
+../Core/Src/can.c:68:6:MX_CAN2_Init	8	static
+../Core/Src/can.c:103:6:HAL_CAN_MspInit	56	static
+../Core/Src/can.c:196:6:HAL_CAN_MspDeInit	16	static
+../Core/Src/can.c:252:6:CAN_FilterConfig1	48	static
+../Core/Src/can.c:270:6:CAN_FilterConfig2	48	static
+../Core/Src/can.c:291:23:CAN_GetStatus	16	static
+../Core/Src/can.c:329:19:CAN_Config	24	static
+../Core/Src/can.c:361:26:CAN_Restart	16	static
+../Core/Src/can.c:376:19:CAN_Send	48	static
+../Core/Src/can.c:415:6:CAN_Service	80	static
