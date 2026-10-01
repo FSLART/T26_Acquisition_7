@@ -1673,9 +1673,9 @@ void MX_ADC1_Init(void)
  800123a:	4b26      	ldr	r3, [pc, #152]	@ (80012d4 <MX_ADC1_Init+0xec>)
  800123c:	2201      	movs	r2, #1
  800123e:	f883 2030 	strb.w	r2, [r3, #48]	@ 0x30
-  hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
  8001242:	4b24      	ldr	r3, [pc, #144]	@ (80012d4 <MX_ADC1_Init+0xec>)
- 8001244:	2200      	movs	r2, #0
+ 8001244:	2201      	movs	r2, #1
  8001246:	615a      	str	r2, [r3, #20]
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
  8001248:	4822      	ldr	r0, [pc, #136]	@ (80012d4 <MX_ADC1_Init+0xec>)
