@@ -507,12 +507,14 @@ void ADC_UpdateMovingAverage(void) {
 	adc_buffer_index = (adc_buffer_index + 1) % ADC_BUFFER_SIZE;
 }
 float MeasureBrakePressure(uint16_t bits) {
-	// Pressure sensor: 0.5-4.5 V for 0-140 bar, 5 V -> 3.3 V divider on the board
+	// Bosch 0 261 545 053: GAUGE pressure (0 bar = atmosphere, so 0 bar at rest), 0.5-4.5 V for 0-140 bar, 5 V supply.
+	// The board divider does not attenuate: PA7 sees the sensor output ~1:1 (with 0.667 the rest read ~10 bar).
+	// ponytail: ADC tops out at 3.3 V = ~98 bar; above that PA7 also exceeds its 3.6 V max. Fix the divider, then set its ratio here.
 	const float ADC_MAX = 4095.0f;
 	const float MCU_VREF = 3.3f;
 	const float SENSOR_VREF = 5.0f;
-	const float CONVERSION_FACTOR = 0.667f;
-	const float OFFSET_VOLTAGE = 0.5f;
+	const float CONVERSION_FACTOR = 1.0f;  // V_PA7 / V_sensor, measure both at rest to tune
+	const float OFFSET_VOLTAGE = 0.5f;     // sensor output at 0 bar, set to the measured rest voltage for an exact 0
 	const float SENSITIVITY = 0.02857f;    // V/bar
 
 	// Voltage at the MCU pin

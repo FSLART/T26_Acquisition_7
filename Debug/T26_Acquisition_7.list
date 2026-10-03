@@ -5011,118 +5011,120 @@ float MeasureBrakePressure(uint16_t bits) {
  80028a0:	af00      	add	r7, sp, #0
  80028a2:	4603      	mov	r3, r0
  80028a4:	80fb      	strh	r3, [r7, #6]
-	// Pressure sensor: 0.5-4.5 V for 0-140 bar, 5 V -> 3.3 V divider on the board
+	// Bosch 0 261 545 053: GAUGE pressure (0 bar = atmosphere, so 0 bar at rest), 0.5-4.5 V for 0-140 bar, 5 V supply.
+	// The board divider does not attenuate: PA7 sees the sensor output ~1:1 (with 0.667 the rest read ~10 bar).
+	// ponytail: ADC tops out at 3.3 V = ~98 bar; above that PA7 also exceeds its 3.6 V max. Fix the divider, then set its ratio here.
 	const float ADC_MAX = 4095.0f;
- 80028a6:	4b36      	ldr	r3, [pc, #216]	@ (8002980 <MeasureBrakePressure+0xe4>)
+ 80028a6:	4b37      	ldr	r3, [pc, #220]	@ (8002984 <MeasureBrakePressure+0xe8>)
  80028a8:	627b      	str	r3, [r7, #36]	@ 0x24
 	const float MCU_VREF = 3.3f;
- 80028aa:	4b36      	ldr	r3, [pc, #216]	@ (8002984 <MeasureBrakePressure+0xe8>)
+ 80028aa:	4b37      	ldr	r3, [pc, #220]	@ (8002988 <MeasureBrakePressure+0xec>)
  80028ac:	623b      	str	r3, [r7, #32]
 	const float SENSOR_VREF = 5.0f;
- 80028ae:	4b36      	ldr	r3, [pc, #216]	@ (8002988 <MeasureBrakePressure+0xec>)
+ 80028ae:	4b37      	ldr	r3, [pc, #220]	@ (800298c <MeasureBrakePressure+0xf0>)
  80028b0:	61fb      	str	r3, [r7, #28]
-	const float CONVERSION_FACTOR = 0.667f;
- 80028b2:	4b36      	ldr	r3, [pc, #216]	@ (800298c <MeasureBrakePressure+0xf0>)
- 80028b4:	61bb      	str	r3, [r7, #24]
-	const float OFFSET_VOLTAGE = 0.5f;
- 80028b6:	f04f 537c 	mov.w	r3, #1056964608	@ 0x3f000000
- 80028ba:	617b      	str	r3, [r7, #20]
+	const float CONVERSION_FACTOR = 1.0f;  // V_PA7 / V_sensor, measure both at rest to tune
+ 80028b2:	f04f 537e 	mov.w	r3, #1065353216	@ 0x3f800000
+ 80028b6:	61bb      	str	r3, [r7, #24]
+	const float OFFSET_VOLTAGE = 0.5f;     // sensor output at 0 bar, set to the measured rest voltage for an exact 0
+ 80028b8:	f04f 537c 	mov.w	r3, #1056964608	@ 0x3f000000
+ 80028bc:	617b      	str	r3, [r7, #20]
 	const float SENSITIVITY = 0.02857f;    // V/bar
- 80028bc:	4b34      	ldr	r3, [pc, #208]	@ (8002990 <MeasureBrakePressure+0xf4>)
- 80028be:	613b      	str	r3, [r7, #16]
+ 80028be:	4b34      	ldr	r3, [pc, #208]	@ (8002990 <MeasureBrakePressure+0xf4>)
+ 80028c0:	613b      	str	r3, [r7, #16]
 
 	// Voltage at the MCU pin
 	float volts = (float) bits * MCU_VREF / ADC_MAX;
- 80028c0:	88fb      	ldrh	r3, [r7, #6]
- 80028c2:	ee07 3a90 	vmov	s15, r3
- 80028c6:	eeb8 7a67 	vcvt.f32.u32	s14, s15
- 80028ca:	edd7 7a08 	vldr	s15, [r7, #32]
- 80028ce:	ee67 6a27 	vmul.f32	s13, s14, s15
- 80028d2:	ed97 7a09 	vldr	s14, [r7, #36]	@ 0x24
- 80028d6:	eec6 7a87 	vdiv.f32	s15, s13, s14
- 80028da:	edc7 7a0b 	vstr	s15, [r7, #44]	@ 0x2c
+ 80028c2:	88fb      	ldrh	r3, [r7, #6]
+ 80028c4:	ee07 3a90 	vmov	s15, r3
+ 80028c8:	eeb8 7a67 	vcvt.f32.u32	s14, s15
+ 80028cc:	edd7 7a08 	vldr	s15, [r7, #32]
+ 80028d0:	ee67 6a27 	vmul.f32	s13, s14, s15
+ 80028d4:	ed97 7a09 	vldr	s14, [r7, #36]	@ 0x24
+ 80028d8:	eec6 7a87 	vdiv.f32	s15, s13, s14
+ 80028dc:	edc7 7a0b 	vstr	s15, [r7, #44]	@ 0x2c
 
 	// Voltage at the sensor output
 	volts = volts / CONVERSION_FACTOR;
- 80028de:	edd7 6a0b 	vldr	s13, [r7, #44]	@ 0x2c
- 80028e2:	ed97 7a06 	vldr	s14, [r7, #24]
- 80028e6:	eec6 7a87 	vdiv.f32	s15, s13, s14
- 80028ea:	edc7 7a0b 	vstr	s15, [r7, #44]	@ 0x2c
+ 80028e0:	edd7 6a0b 	vldr	s13, [r7, #44]	@ 0x2c
+ 80028e4:	ed97 7a06 	vldr	s14, [r7, #24]
+ 80028e8:	eec6 7a87 	vdiv.f32	s15, s13, s14
+ 80028ec:	edc7 7a0b 	vstr	s15, [r7, #44]	@ 0x2c
 
 	// Clamp to the sensor supply range
 	if (volts < 0.0f) {
- 80028ee:	edd7 7a0b 	vldr	s15, [r7, #44]	@ 0x2c
- 80028f2:	eef5 7ac0 	vcmpe.f32	s15, #0.0
- 80028f6:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
- 80028fa:	d503      	bpl.n	8002904 <MeasureBrakePressure+0x68>
+ 80028f0:	edd7 7a0b 	vldr	s15, [r7, #44]	@ 0x2c
+ 80028f4:	eef5 7ac0 	vcmpe.f32	s15, #0.0
+ 80028f8:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 80028fc:	d503      	bpl.n	8002906 <MeasureBrakePressure+0x6a>
 		volts = 0.0f;
- 80028fc:	f04f 0300 	mov.w	r3, #0
- 8002900:	62fb      	str	r3, [r7, #44]	@ 0x2c
- 8002902:	e00a      	b.n	800291a <MeasureBrakePressure+0x7e>
+ 80028fe:	f04f 0300 	mov.w	r3, #0
+ 8002902:	62fb      	str	r3, [r7, #44]	@ 0x2c
+ 8002904:	e00a      	b.n	800291c <MeasureBrakePressure+0x80>
 	} else if (volts > SENSOR_VREF) {
- 8002904:	ed97 7a0b 	vldr	s14, [r7, #44]	@ 0x2c
- 8002908:	edd7 7a07 	vldr	s15, [r7, #28]
- 800290c:	eeb4 7ae7 	vcmpe.f32	s14, s15
- 8002910:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
- 8002914:	dd01      	ble.n	800291a <MeasureBrakePressure+0x7e>
+ 8002906:	ed97 7a0b 	vldr	s14, [r7, #44]	@ 0x2c
+ 800290a:	edd7 7a07 	vldr	s15, [r7, #28]
+ 800290e:	eeb4 7ae7 	vcmpe.f32	s14, s15
+ 8002912:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8002916:	dd01      	ble.n	800291c <MeasureBrakePressure+0x80>
 		volts = SENSOR_VREF;
- 8002916:	69fb      	ldr	r3, [r7, #28]
- 8002918:	62fb      	str	r3, [r7, #44]	@ 0x2c
+ 8002918:	69fb      	ldr	r3, [r7, #28]
+ 800291a:	62fb      	str	r3, [r7, #44]	@ 0x2c
 	}
 
 	// Below the 0.5 V offset the pressure is 0
 
 	float pressure = 0.0f;
- 800291a:	f04f 0300 	mov.w	r3, #0
- 800291e:	62bb      	str	r3, [r7, #40]	@ 0x28
+ 800291c:	f04f 0300 	mov.w	r3, #0
+ 8002920:	62bb      	str	r3, [r7, #40]	@ 0x28
 	if (volts <= OFFSET_VOLTAGE) {
- 8002920:	ed97 7a0b 	vldr	s14, [r7, #44]	@ 0x2c
- 8002924:	edd7 7a05 	vldr	s15, [r7, #20]
- 8002928:	eeb4 7ae7 	vcmpe.f32	s14, s15
- 800292c:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
- 8002930:	d803      	bhi.n	800293a <MeasureBrakePressure+0x9e>
+ 8002922:	ed97 7a0b 	vldr	s14, [r7, #44]	@ 0x2c
+ 8002926:	edd7 7a05 	vldr	s15, [r7, #20]
+ 800292a:	eeb4 7ae7 	vcmpe.f32	s14, s15
+ 800292e:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8002932:	d803      	bhi.n	800293c <MeasureBrakePressure+0xa0>
 		pressure = 0.0f;
- 8002932:	f04f 0300 	mov.w	r3, #0
- 8002936:	62bb      	str	r3, [r7, #40]	@ 0x28
- 8002938:	e00b      	b.n	8002952 <MeasureBrakePressure+0xb6>
+ 8002934:	f04f 0300 	mov.w	r3, #0
+ 8002938:	62bb      	str	r3, [r7, #40]	@ 0x28
+ 800293a:	e00b      	b.n	8002954 <MeasureBrakePressure+0xb8>
 	} else {
 		pressure = (volts - OFFSET_VOLTAGE) / SENSITIVITY;
- 800293a:	ed97 7a0b 	vldr	s14, [r7, #44]	@ 0x2c
- 800293e:	edd7 7a05 	vldr	s15, [r7, #20]
- 8002942:	ee77 6a67 	vsub.f32	s13, s14, s15
- 8002946:	ed97 7a04 	vldr	s14, [r7, #16]
- 800294a:	eec6 7a87 	vdiv.f32	s15, s13, s14
- 800294e:	edc7 7a0a 	vstr	s15, [r7, #40]	@ 0x28
+ 800293c:	ed97 7a0b 	vldr	s14, [r7, #44]	@ 0x2c
+ 8002940:	edd7 7a05 	vldr	s15, [r7, #20]
+ 8002944:	ee77 6a67 	vsub.f32	s13, s14, s15
+ 8002948:	ed97 7a04 	vldr	s14, [r7, #16]
+ 800294c:	eec6 7a87 	vdiv.f32	s15, s13, s14
+ 8002950:	edc7 7a0a 	vstr	s15, [r7, #40]	@ 0x28
 	}
 
 	// Sensor full scale
 	const float MAX_PRESSURE = 140.0f;
- 8002952:	4b10      	ldr	r3, [pc, #64]	@ (8002994 <MeasureBrakePressure+0xf8>)
- 8002954:	60fb      	str	r3, [r7, #12]
+ 8002954:	4b0f      	ldr	r3, [pc, #60]	@ (8002994 <MeasureBrakePressure+0xf8>)
+ 8002956:	60fb      	str	r3, [r7, #12]
 	if (pressure > MAX_PRESSURE) {
- 8002956:	ed97 7a0a 	vldr	s14, [r7, #40]	@ 0x28
- 800295a:	edd7 7a03 	vldr	s15, [r7, #12]
- 800295e:	eeb4 7ae7 	vcmpe.f32	s14, s15
- 8002962:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
- 8002966:	dd01      	ble.n	800296c <MeasureBrakePressure+0xd0>
+ 8002958:	ed97 7a0a 	vldr	s14, [r7, #40]	@ 0x28
+ 800295c:	edd7 7a03 	vldr	s15, [r7, #12]
+ 8002960:	eeb4 7ae7 	vcmpe.f32	s14, s15
+ 8002964:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8002968:	dd01      	ble.n	800296e <MeasureBrakePressure+0xd2>
 		pressure = MAX_PRESSURE;
- 8002968:	68fb      	ldr	r3, [r7, #12]
- 800296a:	62bb      	str	r3, [r7, #40]	@ 0x28
+ 800296a:	68fb      	ldr	r3, [r7, #12]
+ 800296c:	62bb      	str	r3, [r7, #40]	@ 0x28
 	}
 
 	return pressure;
- 800296c:	6abb      	ldr	r3, [r7, #40]	@ 0x28
- 800296e:	ee07 3a90 	vmov	s15, r3
+ 800296e:	6abb      	ldr	r3, [r7, #40]	@ 0x28
+ 8002970:	ee07 3a90 	vmov	s15, r3
 }
- 8002972:	eeb0 0a67 	vmov.f32	s0, s15
- 8002976:	3734      	adds	r7, #52	@ 0x34
- 8002978:	46bd      	mov	sp, r7
- 800297a:	f85d 7b04 	ldr.w	r7, [sp], #4
- 800297e:	4770      	bx	lr
- 8002980:	457ff000 	.word	0x457ff000
- 8002984:	40533333 	.word	0x40533333
- 8002988:	40a00000 	.word	0x40a00000
- 800298c:	3f2ac083 	.word	0x3f2ac083
+ 8002974:	eeb0 0a67 	vmov.f32	s0, s15
+ 8002978:	3734      	adds	r7, #52	@ 0x34
+ 800297a:	46bd      	mov	sp, r7
+ 800297c:	f85d 7b04 	ldr.w	r7, [sp], #4
+ 8002980:	4770      	bx	lr
+ 8002982:	bf00      	nop
+ 8002984:	457ff000 	.word	0x457ff000
+ 8002988:	40533333 	.word	0x40533333
+ 800298c:	40a00000 	.word	0x40a00000
  8002990:	3cea0ba2 	.word	0x3cea0ba2
  8002994:	430c0000 	.word	0x430c0000
 

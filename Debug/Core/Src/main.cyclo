@@ -11,6 +11,6 @@
 ../Core/Src/main.c:460:6:Acq7_DebugUpdate	3
 ../Core/Src/main.c:490:6:ADC_UpdateMovingAverage	3
 ../Core/Src/main.c:509:7:MeasureBrakePressure	5
-../Core/Src/main.c:548:7:MeasureSuspensionPosition	1
-../Core/Src/main.c:565:7:MeasureNtcTemperature	3
-../Core/Src/main.c:594:6:Error_Handler	1
+../Core/Src/main.c:550:7:MeasureSuspensionPosition	1
+../Core/Src/main.c:567:7:MeasureNtcTemperature	3
+../Core/Src/main.c:596:6:Error_Handler	1
