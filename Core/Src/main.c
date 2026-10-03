@@ -76,8 +76,11 @@ uint8_t front_alive;                     // 1 while 0x710 arrives within FRONT_P
 
 // Analog sensors
 float BRK_PRESS_REAR;   // Rear brake pressure (bar)
-float SUSP_LEFT;        // Left suspension position (mm)
-float SUSP_RIGHT;       // Right suspension position (mm)
+float SUSP_LEFT;        // Left suspension travel from ride height (mm): + extension, - compression
+float SUSP_RIGHT;       // Right suspension travel from ride height (mm): + extension, - compression
+float SUSP_LEFT_ZERO;   // Absolute position at boot = ride height (mm)
+float SUSP_RIGHT_ZERO;
+uint8_t susp_zeroed;    // 0 until the ride height is captured (~0.5 s after boot)
 
 // Coolant NTCs: Vishay NTCAIMM66H, 10k @ 25 C, B25/85 = 3984 K.
 // Board: 5 V -> NTC -> node A; node A has 100k to GND and 24.3k -> ADC pin (4.9k from the ADC pin to GND)
@@ -244,6 +247,7 @@ int main(void)
 		static uint32_t previus_tick_10ms = 0;
 		static uint32_t previus_tick_50ms = 0;
 		static uint32_t previus_tick_100ms = 0;
+		static uint32_t previus_tick_125ms = 0;
 
 		// Execute 10ms Tasks
 		if (time_ms - previus_tick_10ms >= 10) {
@@ -261,6 +265,12 @@ int main(void)
 		if (time_ms - previus_tick_100ms >= 100) {
 			execute_100ms_tasks();
 			previus_tick_100ms = time_ms;
+		}
+
+		// DATA bus (CAN2) AQT7 at 8 Hz: suspension and NTCs (values refreshed every 50 ms)
+		if (time_ms - previus_tick_125ms >= 125) {
+			Data_SendSensors();
+			previus_tick_125ms = time_ms;
 		}
 	}
 
@@ -337,8 +347,22 @@ void execute_50ms_tasks() {
 	ADC_UpdateMovingAverage();
 
 	BRK_PRESS_REAR = MeasureBrakePressure(brk_press_adc);
-	SUSP_LEFT = MeasureSuspensionPosition(susp_left_adc);
-	SUSP_RIGHT = MeasureSuspensionPosition(susp_right_adc);
+
+	// Ride height: the position once the moving average is first full (index wraps to 0
+	// after ADC_BUFFER_SIZE updates) is 0 mm. Sends 0 until then.
+	float susp_left_abs = MeasureSuspensionPosition(adc_filtered[1]);
+	float susp_right_abs = MeasureSuspensionPosition(adc_filtered[2]);
+	if (!susp_zeroed && adc_buffer_index == 0) {
+		SUSP_LEFT_ZERO = susp_left_abs;
+		SUSP_RIGHT_ZERO = susp_right_abs;
+		susp_zeroed = 1;
+	}
+	// Sign convention (sent as SUSP_L / SUSP_R on the DATA bus):
+	//   positive (+) = EXTENSION   (wheel drops, suspension opens past ride height)
+	//   negative (-) = COMPRESSION (wheel rises, suspension closes past ride height)
+	// The sensor voltage goes DOWN when the suspension extends on this car, hence ZERO - abs.
+	SUSP_LEFT = susp_zeroed ? SUSP_LEFT_ZERO - susp_left_abs : 0.0f;
+	SUSP_RIGHT = susp_zeroed ? SUSP_RIGHT_ZERO - susp_right_abs : 0.0f;
 
 	for (int i = 0; i < NTC_COUNT; i++) {
 		NTC_TEMP[i] = MeasureNtcTemperature(adc_filtered[3 + i]);
@@ -358,9 +382,6 @@ void execute_50ms_tasks() {
 	// A failed send is counted in can1_status and handled by CAN_Service, never fatal
 	memcpy(acq7.can.tx_770_autonomous, TxData, sizeof(acq7.can.tx_770_autonomous));
 	CAN_Send(CAN_AUTONOMOUS, &TxHeader, TxData);
-
-	// DATA bus (CAN2): suspension and NTCs
-	Data_SendSensors();
 
 	// Front brake pressure (Autonomous bus, CAN1 0x710, 0.1 bar/bit). Forced to 0 if 0x710 stopped arriving,
 	// so the brake light then follows the rear pressure only.
