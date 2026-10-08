@@ -122,7 +122,7 @@ typedef struct {
 extern CAN_BusStatus can1_status;   // Autonomous bus
 extern CAN_BusStatus can2_status;   // DATA bus
 
-// Bus roles: CAN1 = Autonomous (500 kbit/s), CAN2 = DATA (1 Mbit/s, sample point 87.5 %)
+// Bus roles: CAN1 = Autonomous (1 Mbit/s, sample point 75 %), CAN2 = DATA (1 Mbit/s, sample point 87.5 %)
 #define CAN_AUTONOMOUS (&hcan1)
 #define CAN_DATA (&hcan2)
 /* USER CODE END Private defines */
