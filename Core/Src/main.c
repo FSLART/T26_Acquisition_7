@@ -133,13 +133,6 @@ typedef struct {
 	} io;
 
 	struct {
-		uint8_t state;          // 0 = IDLE, 1 = PULSE_ON, 2 = PULSE_OFF
-		uint8_t pulse_count;    // pulsos executados no ciclo atual
-		uint32_t current_interval_ms; // intervalo sorteado para o ciclo atual (ms)
-		uint32_t next_burst_ms; // ms restantes ate a proxima ativacao
-	} mosfet;
-
-	struct {
 		uint16_t coded;         // 0x710 bytes 0-1, 0.1 bar/bit
 		uint8_t alive;          // 1 while 0x710 arrives within FRONT_PRESSURE_TIMEOUT_MS
 		uint32_t age_ms;        // time since the last 0x710
@@ -156,41 +149,6 @@ typedef struct {
 
 Acq7_Debug acq7;
 
-// ==============================================================================
-// Controlo periodico do MOSFET (PC10 - BRAKE_LIGHT_Pin)
-// Requisito: atuar por ciclo num intervalo aleatorio de 4 a 7 minutos
-// ==============================================================================
-#define MOSFET_PERIODIC_MODE     1                     // 1 = Modo periodico, 0 = Modo luz de travao original
-#define MOSFET_PERIOD_MIN_MS     (4UL * 60UL * 1000UL) // Intervalo minimo: 4 minutos (240 000 ms)
-#define MOSFET_PERIOD_MAX_MS     (7UL * 60UL * 1000UL) // Intervalo maximo: 7 minutos (420 000 ms)
-#define MOSFET_PULSE_ON_MS       25UL                  // Duracao de cada pulso ligado (ms)
-#define MOSFET_PULSE_OFF_MS      25UL                  // Intervalo desligado entre pulsos (ms)
-#define MOSFET_PULSES_PER_BURST  30                    // Ativacoes por ciclo
-
-// Polaridade do MOSFET:
-// Se o circuito acionar a nivel BAIXO (como configurado no brake light original):
-//   MOSFET_PIN_ACTIVE = GPIO_PIN_RESET, MOSFET_PIN_INACTIVE = GPIO_PIN_SET
-// Se o circuito acionar diretamente a nivel ALTO (ex: N-MOSFET direto):
-//   MOSFET_PIN_ACTIVE = GPIO_PIN_SET, MOSFET_PIN_INACTIVE = GPIO_PIN_RESET
-#define MOSFET_PIN_ACTIVE        GPIO_PIN_RESET
-#define MOSFET_PIN_INACTIVE      GPIO_PIN_SET
-
-// Se 1: executa a primeira sequencia 1 segundo apos o boot (ideal para teste rapido na bancada)
-// Se 0: aguarda o primeiro intervalo aleatorio apos ligar a placa
-#define MOSFET_BURST_ON_BOOT     1
-
-typedef enum {
-	MOSFET_STATE_IDLE = 0,
-	MOSFET_STATE_PULSE_ON,
-	MOSFET_STATE_PULSE_OFF
-} MosfetState_t;
-
-MosfetState_t mosfet_state = MOSFET_STATE_IDLE;
-uint32_t mosfet_last_burst_tick = 0;
-uint32_t mosfet_step_tick = 0;
-uint8_t mosfet_current_pulse = 0;
-uint32_t mosfet_current_interval_ms = 0;
-
 // Tasks Prototypes
 void execute_immediate_tasks(void);
 void execute_10ms_tasks(void);
@@ -204,9 +162,6 @@ void Data_SendSensors(void);
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-uint32_t MOSFET_GetRandomInterval(uint32_t min_ms, uint32_t max_ms);
-void MOSFET_Control_Init(void);
-void MOSFET_Control_Update(void);
 void ADC_UpdateMovingAverage(void);
 float MeasureSuspensionPosition(uint16_t bits);
 float MeasureBrakePressure(uint16_t bits);
@@ -235,6 +190,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -276,9 +232,6 @@ int main(void)
 	}
 
 	// CAN filters, start and RX notification are done in MX_CANx_Init (CAN_Config)
-
-	// Inicializacao do controlo periodico do MOSFET
-	MOSFET_Control_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -387,10 +340,6 @@ void execute_10ms_tasks() {
 	CAN_Service(CAN_AUTONOMOUS);
 	CAN_Service(CAN_DATA);
 
-#if MOSFET_PERIODIC_MODE
-	MOSFET_Control_Update();
-#endif
-
 	Acq7_DebugUpdate();
 }
 void execute_50ms_tasks() {
@@ -443,7 +392,6 @@ void execute_50ms_tasks() {
 		BRK_PRESS_FRONT = 0.0f;
 	}
 
-#if !MOSFET_PERIODIC_MODE
 	// Brake light: output low while either circuit is at PRESSURE_LEVEL or more
 
 	if ((BRK_PRESS_REAR >= PRESSURE_LEVEL_REAR)
@@ -452,7 +400,6 @@ void execute_50ms_tasks() {
 	} else {
 		HAL_GPIO_WritePin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin, GPIO_PIN_SET);
 	}
-#endif
 }
 void execute_100ms_tasks() {
 	HAL_GPIO_TogglePin(HEARTBEAT_GPIO_Port, HEARTBEAT_Pin); // HEARTBEAT
@@ -531,16 +478,6 @@ void Acq7_DebugUpdate(void) {
 
 	acq7.io.brake_light = HAL_GPIO_ReadPin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin);
 	acq7.io.heartbeat = HAL_GPIO_ReadPin(HEARTBEAT_GPIO_Port, HEARTBEAT_Pin);
-
-	acq7.mosfet.state = (uint8_t) mosfet_state;
-	acq7.mosfet.pulse_count = mosfet_current_pulse;
-	acq7.mosfet.current_interval_ms = mosfet_current_interval_ms;
-	if (mosfet_state == MOSFET_STATE_IDLE) {
-		uint32_t elapsed = now - mosfet_last_burst_tick;
-		acq7.mosfet.next_burst_ms = (elapsed < mosfet_current_interval_ms) ? (mosfet_current_interval_ms - elapsed) : 0;
-	} else {
-		acq7.mosfet.next_burst_ms = 0;
-	}
 
 	acq7.front.coded = coded_front_pressure;
 	acq7.front.alive = front_alive;
@@ -652,94 +589,6 @@ float MeasureNtcTemperature(uint16_t bits) {
 	float inv_t = 1.0f / T25_K + logf(r_ntc / NTC_R25) / NTC_B;
 
 	return 1.0f / inv_t - 273.15f;
-}
-
-uint32_t MOSFET_GetRandomInterval(uint32_t min_ms, uint32_t max_ms) {
-	static uint32_t rng_state = 0xA5A55A5A;
-
-	if (min_ms >= max_ms) {
-		return min_ms;
-	}
-
-	// Mistura entropia do hardware: timer SysTick (96 MHz) + leituras dos canais ADC + uptime
-	rng_state ^= SysTick->VAL;
-	rng_state ^= ((uint32_t) ADC_VALUE[0] << 16) | (uint32_t) ADC_VALUE[1];
-	rng_state ^= time_ms;
-
-	// Algoritmo Xorshift32
-	rng_state ^= rng_state << 13;
-	rng_state ^= rng_state >> 17;
-	rng_state ^= rng_state << 5;
-
-	uint32_t span = (max_ms - min_ms) + 1UL;
-	return min_ms + (rng_state % span);
-}
-
-void MOSFET_Control_Init(void) {
-	HAL_GPIO_WritePin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin, MOSFET_PIN_INACTIVE);
-	mosfet_state = MOSFET_STATE_IDLE;
-	mosfet_current_pulse = 0;
-	mosfet_current_interval_ms = MOSFET_GetRandomInterval(MOSFET_PERIOD_MIN_MS, MOSFET_PERIOD_MAX_MS);
-
-#if MOSFET_BURST_ON_BOOT
-	// Inicia a primeira sequencia 1 segundo apos o arranque
-	mosfet_last_burst_tick = time_ms - mosfet_current_interval_ms + 1000;
-#else
-	mosfet_last_burst_tick = time_ms;
-#endif
-}
-
-void MOSFET_Control_Update(void) {
-	switch (mosfet_state) {
-	case MOSFET_STATE_IDLE:
-		// Aguarda o intervalo aleatorio sorteado para este ciclo (entre 4 e 7 minutos)
-		if ((time_ms - mosfet_last_burst_tick) >= mosfet_current_interval_ms) {
-			mosfet_last_burst_tick = time_ms;
-			mosfet_current_pulse = 0;
-
-			// Liga MOSFET (1o pulso)
-			HAL_GPIO_WritePin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin, MOSFET_PIN_ACTIVE);
-			mosfet_step_tick = time_ms;
-			mosfet_state = MOSFET_STATE_PULSE_ON;
-		}
-		break;
-
-	case MOSFET_STATE_PULSE_ON:
-		// Mantem ligado durante o tempo configurado
-		if ((time_ms - mosfet_step_tick) >= MOSFET_PULSE_ON_MS) {
-			// Desliga MOSFET
-			HAL_GPIO_WritePin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin, MOSFET_PIN_INACTIVE);
-			mosfet_step_tick = time_ms;
-			mosfet_current_pulse++;
-
-			if (mosfet_current_pulse >= MOSFET_PULSES_PER_BURST) {
-				// Concluiu todos os pulsos deste ciclo:
-				// Sorteia novo intervalo aleatorio entre 4 e 7 minutos para o proximo ciclo
-				mosfet_current_interval_ms = MOSFET_GetRandomInterval(MOSFET_PERIOD_MIN_MS, MOSFET_PERIOD_MAX_MS);
-				mosfet_last_burst_tick = time_ms;
-				mosfet_state = MOSFET_STATE_IDLE;
-			} else {
-				// Aguarda intervalo desligado antes do proximo pulso
-				mosfet_state = MOSFET_STATE_PULSE_OFF;
-			}
-		}
-		break;
-
-	case MOSFET_STATE_PULSE_OFF:
-		// Mantem desligado durante o intervalo configurado
-		if ((time_ms - mosfet_step_tick) >= MOSFET_PULSE_OFF_MS) {
-			// Liga MOSFET para o proximo pulso
-			HAL_GPIO_WritePin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin, MOSFET_PIN_ACTIVE);
-			mosfet_step_tick = time_ms;
-			mosfet_state = MOSFET_STATE_PULSE_ON;
-		}
-		break;
-
-	default:
-		HAL_GPIO_WritePin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin, MOSFET_PIN_INACTIVE);
-		mosfet_state = MOSFET_STATE_IDLE;
-		break;
-	}
 }
 /* USER CODE END 4 */
 

@@ -61,8 +61,8 @@ all: main-build
 main-build: T26_Acquisition_7.elf secondary-outputs
 
 # Tool invocations
-T26_Acquisition_7.elf T26_Acquisition_7.map: $(OBJS) $(USER_OBJS) C:\Users\Guilherme\Documents\Github\T26_Acquisition_7\STM32F412RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "T26_Acquisition_7.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\Guilherme\Documents\Github\T26_Acquisition_7\STM32F412RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="T26_Acquisition_7.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+T26_Acquisition_7.elf T26_Acquisition_7.map: $(OBJS) $(USER_OBJS) C:\Users\jpser\Documents\GitHub\T26_Acquisition_7\STM32F412RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "T26_Acquisition_7.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\jpser\Documents\GitHub\T26_Acquisition_7\STM32F412RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="T26_Acquisition_7.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
