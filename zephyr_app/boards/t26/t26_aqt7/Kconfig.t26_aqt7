@@ -1,0 +1,4 @@
+# T26 Acquisition board 7 (AQT7): STM32F412RET6 (LQFP64)
+
+config BOARD_T26_AQT7
+	select SOC_STM32F412RX

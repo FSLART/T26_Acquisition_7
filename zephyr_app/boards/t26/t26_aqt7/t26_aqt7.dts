@@ -1,0 +1,84 @@
+/*
+ * T26 Acquisition board 7 (AQT7)
+ * MCU: STM32F412RET6 (512 KB Flash, 256 KB RAM, LQFP64)
+ *
+ * Pins and clocks follow T26_Acquisition_7.ioc (read-only reference).
+ * Only clocks, console and the two outputs are described so far.
+ * ADC1, CAN1, CAN2 and IWDG are added as they are ported.
+ */
+
+/dts-v1/;
+#include <st/f4/stm32f412Xe.dtsi>
+#include <st/f4/stm32f412r(e-g)tx-pinctrl.dtsi>
+
+/ {
+	model = "T26 Acquisition board 7 (AQT7)";
+	compatible = "t26,aqt7";
+
+	chosen {
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+	};
+
+	leds: leds {
+		compatible = "gpio-leds";
+
+		/* PC11, toggled by the firmware to show the main loop is alive */
+		heartbeat: heartbeat {
+			gpios = <&gpioc 11 GPIO_ACTIVE_HIGH>;
+			label = "Heartbeat";
+		};
+
+		/* PC10, active low: the pin is driven LOW to turn the brake light on.
+		 * With GPIO_ACTIVE_LOW, gpio_pin_set_dt(..., 1) means "light on".
+		 */
+		brake_light: brake_light {
+			gpios = <&gpioc 10 GPIO_ACTIVE_LOW>;
+			label = "Brake light";
+		};
+	};
+
+	aliases {
+		led0 = &heartbeat;	/* lets samples/basic/blinky run unmodified */
+		heartbeat = &heartbeat;
+		brake-light = &brake_light;
+	};
+};
+
+/* LSI: clock for the IWDG (watchdog), to be enabled when it is ported */
+&clk_lsi {
+	status = "okay";
+};
+
+/* No crystal on the board: HSI 16 MHz, same as the CubeIDE firmware */
+&clk_hsi {
+	status = "okay";
+};
+
+/* 16 MHz / 8 * 96 = 192 MHz VCO, /2 = 96 MHz SYSCLK, /4 = 48 MHz (Q, unused) */
+&pll {
+	div-m = <8>;
+	mul-n = <96>;
+	div-p = <2>;
+	div-q = <4>;
+	clocks = <&clk_hsi>;
+	status = "okay";
+};
+
+/* SYSCLK 96 MHz, APB1 48 MHz (CAN), APB2 96 MHz (ADC, USART1) */
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(96)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <2>;
+	apb2-prescaler = <1>;
+};
+
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+};

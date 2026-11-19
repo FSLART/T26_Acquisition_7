@@ -1,0 +1,10 @@
+identifier: t26_aqt7
+name: T26 Acquisition board 7 (AQT7)
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+ram: 256
+flash: 512
+supported:
+  - gpio

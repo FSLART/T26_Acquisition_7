@@ -1,0 +1,11 @@
+# Enable MPU
+CONFIG_ARM_MPU=y
+
+# Enable HW stack protection
+CONFIG_HW_STACK_PROTECTION=y
+
+CONFIG_SERIAL=y
+
+# Console on USART1 (PA9 TX / PA10 RX, 115200 8N1), same port as the CubeIDE printf log
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=y

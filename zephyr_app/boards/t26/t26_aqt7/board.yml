@@ -1,0 +1,5 @@
+board:
+  name: t26_aqt7
+  full_name: T26 Acquisition board 7 (AQT7)
+  socs:
+    - name: stm32f412rx
