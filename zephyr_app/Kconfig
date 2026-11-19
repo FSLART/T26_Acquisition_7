@@ -1,0 +1,14 @@
+# Application options for the AQT7 firmware. Set them in prj.conf.
+
+mainmenu "T26 AQT7"
+
+config AQT7_DEBUG_PRINT_MS
+	int "Period of the sensor values log (ms), 0 = off"
+	default 100
+	help
+	  The debug thread logs the brake pressures, suspensions and NTC with
+	  their ADC values on the console every this many milliseconds, like
+	  execute_100ms_tasks() in the STM32CubeIDE firmware. 0 turns it off;
+	  the acq7 debug snapshot is updated either way.
+
+source "Kconfig.zephyr"

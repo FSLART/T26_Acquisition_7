@@ -17,8 +17,17 @@ set(REPO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 target_sources(app PRIVATE
   src/main.c
+  src/conversions.c
+  src/sensors.c
+  src/brake_light.c
+  src/can_bus.c
+  src/can_rx.c
+  src/can_tx.c
+  src/watchdog.c
+  src/debug.c
   # cantools output, updated by the DBC workflow: never edit, only reference
   ${REPO_DIR}/Core/DBC/data_t26.c
+  ${REPO_DIR}/Core/DBC/autonomous_t26.c
 )
 
 target_include_directories(app PRIVATE

@@ -3,13 +3,13 @@
  * MCU: STM32F412RET6 (512 KB Flash, 256 KB RAM, LQFP64)
  *
  * Pins and clocks follow T26_Acquisition_7.ioc (read-only reference).
- * Only clocks, console and the two outputs are described so far.
- * ADC1, CAN1, CAN2 and IWDG are added as they are ported.
+ * Described: clocks, console, the two outputs, CAN1, CAN2, ADC1 and IWDG.
  */
 
 /dts-v1/;
 #include <st/f4/stm32f412Xe.dtsi>
 #include <st/f4/stm32f412r(e-g)tx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/adc/adc.h>
 
 / {
 	model = "T26 Acquisition board 7 (AQT7)";
@@ -44,11 +44,118 @@
 		led0 = &heartbeat;	/* lets samples/basic/blinky run unmodified */
 		heartbeat = &heartbeat;
 		brake-light = &brake_light;
+		can-autonomous = &can1;
+		can-data = &can2;
+		watchdog0 = &iwdg;
+	};
+
+	/* ADC channels in scan order, for ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), i):
+	 * 0 brake pressure, 1 left suspension, 2 right suspension, 3 coolant NTC
+	 */
+	zephyr,user {
+		io-channels = <&adc1 7>, <&adc1 8>, <&adc1 9>, <&adc1 14>;
 	};
 };
 
-/* LSI: clock for the IWDG (watchdog), to be enabled when it is ported */
+/*
+ * CAN1: PA11 RX / PA12 TX, 1 Mbit/s.
+ * IOC: prescaler 3, BS1 11, BS2 4 -> 16 tq at 48 MHz APB1, sample point (1 + 11) / 16 = 75 %.
+ */
+&can1 {
+	pinctrl-0 = <&can1_rx_pa11 &can1_tx_pa12>;
+	pinctrl-names = "default";
+	bitrate = <1000000>;
+	sample-point = <750>;
+	status = "okay";
+};
+
+/*
+ * CAN2 (DATA bus): PB12 RX / PB13 TX, 1 Mbit/s.
+ * IOC: prescaler 3, BS1 13, BS2 2 -> 16 tq, sample point (1 + 13) / 16 = 87.5 %.
+ * CAN2 is a slave of CAN1 (shared filter banks), so CAN1 must stay enabled.
+ */
+&can2 {
+	pinctrl-0 = <&can2_rx_pb12 &can2_tx_pb13>;
+	pinctrl-names = "default";
+	bitrate = <1000000>;
+	sample-point = <875>;
+	status = "okay";
+};
+
+/* RX pins have the internal pull-up enabled in the IOC */
+&can1_rx_pa11 {
+	bias-pull-up;
+};
+
+&can2_rx_pb12 {
+	bias-pull-up;
+};
+
+/* ADC clock = APB2 96 MHz / 4 = 24 MHz (max 36 MHz on the F412) */
+&adc123_common {
+	st,adc-prescaler = <4>;
+	status = "okay";
+};
+
+/*
+ * ADC1, 12 bit, 480 cycle sampling on every channel (same as the IOC).
+ * The channel order matches the IOC scan ranks 1-4.
+ */
+&adc1 {
+	pinctrl-0 = <&adc1_in7_pa7 &adc1_in8_pb0 &adc1_in9_pb1 &adc1_in14_pc4>;
+	pinctrl-names = "default";
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	/* Rank 1, PA7: brake pressure (BRK_PRESS) */
+	brk_press: channel@7 {
+		reg = <7>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 480)>;
+		zephyr,resolution = <12>;
+	};
+
+	/* Rank 2, PB0: left suspension (SUSP_LEFT) */
+	susp_left: channel@8 {
+		reg = <8>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 480)>;
+		zephyr,resolution = <12>;
+	};
+
+	/* Rank 3, PB1: right suspension (SUSP_RIGHT) */
+	susp_right: channel@9 {
+		reg = <9>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 480)>;
+		zephyr,resolution = <12>;
+	};
+
+	/* Rank 4, PC4: coolant NTC (NTC1) */
+	ntc1: channel@e {
+		reg = <14>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 480)>;
+		zephyr,resolution = <12>;
+	};
+};
+
+/* LSI ~32 kHz: clock for the IWDG */
 &clk_lsi {
+	status = "okay";
+};
+
+/*
+ * Independent watchdog, clocked from the LSI.
+ * The timeout (~2 s in the CubeIDE firmware) is not a devicetree property:
+ * the app sets it with wdt_install_timeout() (window.max = 2000 ms), then wdt_setup().
+ */
+&iwdg {
 	status = "okay";
 };
 

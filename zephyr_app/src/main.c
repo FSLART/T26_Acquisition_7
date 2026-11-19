@@ -1,67 +1,80 @@
 /*
  * T26 Acquisition board 7 (AQT7), Zephyr port.
+ * Based on "original" C code
  *
- * Skeleton: heartbeat on PC11 every 100 ms (same as the CubeIDE firmware), brake light
- * output set up and kept off, log over USART1. Sensors, CAN and watchdog are ported next.
+ * main starts the IWDG, sets up the hardware in order, starts each module's thread, then runs
+ * the heartbeat and feeds the watchdog while every thread is alive.
+ *
+ * Every module is required, like in the CubeIDE firmware: if one fails to set up, watchdog_fail()
+ * stops feeding and the board resets after 2 s and tries the whole setup again
+ * (the CubeIDE firmware did the same through Error_Handler + IWDG).
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
-#include "data_t26.h"
+#include "brake_light.h"
+#include "can_bus.h"
+#include "can_rx.h"
+#include "can_tx.h"
+#include "debug.h"
+#include "sensors.h"
+#include "watchdog.h"
 
 LOG_MODULE_REGISTER(aqt7, LOG_LEVEL_INF);
 
 #define HEARTBEAT_PERIOD_MS 100
 
 static const struct gpio_dt_spec heartbeat = GPIO_DT_SPEC_GET(DT_ALIAS(heartbeat), gpios);
-static const struct gpio_dt_spec brake_light = GPIO_DT_SPEC_GET(DT_ALIAS(brake_light), gpios);
 
-static int outputs_init(void)
-{
-	if (!gpio_is_ready_dt(&heartbeat) || !gpio_is_ready_dt(&brake_light)) {
-		LOG_ERR("GPIO controller not ready");
-		return -ENODEV;
-	}
+int main(void) {
+    LOG_INF("T26 AQT7 starting on %s", CONFIG_BOARD);
 
-	int ret = gpio_pin_configure_dt(&heartbeat, GPIO_OUTPUT_INACTIVE);
+    /* First, so a hang anywhere in the setup below also resets the board.
+     * If it fails the board still runs, unprotected: that is better than not running at all.
+     */
+    if (watchdog_init() < 0) {
+        LOG_ERR("IWDG not running: the board will NOT reset on a hang");
+    }
 
-	if (ret < 0) {
-		return ret;
-	}
+    if (!gpio_is_ready_dt(&heartbeat) || gpio_pin_configure_dt(&heartbeat, GPIO_OUTPUT_INACTIVE) < 0) {
+        watchdog_fail("heartbeat GPIO setup failed");
+    }
 
-	/* Inactive = light off. The pin is active low in the devicetree, so this drives PC10 HIGH.
-	 * (The CubeIDE firmware boots with PC10 LOW, i.e. light on until the first 50 ms task.)
-	 */
-	return gpio_pin_configure_dt(&brake_light, GPIO_OUTPUT_INACTIVE);
-}
+    // ADC1: brake pressure, suspension, NTC
+    if (sensors_init() < 0) {
+        watchdog_fail("ADC setup failed");
+    }
 
-int main(void)
-{
-	LOG_INF("T26 AQT7 starting on %s", CONFIG_BOARD);
+    // PC10 brake light
+    if (brake_light_init() < 0) {
+        watchdog_fail("brake light setup failed");
+    }
 
-	/* Checks that the DBC code links: pack an empty AQT7 frame */
-	struct data_t26_aqt7_t aqt7 = {0};
-	uint8_t frame[DATA_T26_AQT7_LENGTH];
+    // Both CAN buses: start + RX filters
+    if (can_bus_init(can_rx_ids, can_rx_id_count) < 0) {
+        watchdog_fail("CAN setup failed");
+    }
 
-	LOG_INF("AQT7: ID 0x%03x, pack returned %d", DATA_T26_AQT7_FRAME_ID,
-		data_t26_aqt7_pack(frame, &aqt7, sizeof(frame)));
+    // All hardware ready: start the threads (each registers with the watchdog)
+    sensors_start();
+    brake_light_start();
+    can_rx_start();
+    can_tx_start();
+    debug_start();
 
-	if (outputs_init() < 0) {
-		LOG_ERR("Output setup failed");
-		return 0;
-	}
+    /* Absolute deadlines: the period doesn't drift with the time spent in the loop */
+    int64_t next = k_uptime_get();
 
-	/* Absolute deadlines: the period doesn't drift with the time spent in the loop */
-	int64_t next = k_uptime_get();
+    while (1) {
+        gpio_pin_toggle_dt(&heartbeat);
+        watchdog_service();
+        can_bus_service(); /* bus health, error log, restart of a stopped controller */
 
-	while (1) {
-		gpio_pin_toggle_dt(&heartbeat);
+        next += HEARTBEAT_PERIOD_MS;
+        k_sleep(K_TIMEOUT_ABS_MS(next));
+    }
 
-		next += HEARTBEAT_PERIOD_MS;
-		k_sleep(K_TIMEOUT_ABS_MS(next));
-	}
-
-	return 0;
+    return 0;
 }
