@@ -10,6 +10,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/can.h>
 
+// The numbers here are not to be confused with any possible numeration given to the buses in other documentation
 enum can_bus {
     CAN_BUS_AUTONOMOUS = 0, /* CAN1, PA11/PA12 (alias can-autonomous) */
     CAN_BUS_DATA,           /* CAN2, PB12/PB13 (alias can-data) */

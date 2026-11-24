@@ -11,4 +11,15 @@ config AQT7_DEBUG_PRINT_MS
 	  execute_100ms_tasks() in the STM32CubeIDE firmware. 0 turns it off;
 	  the acq7 debug snapshot is updated either way.
 
+config AQT7_SIM
+	bool "\"sim\" shell command to simulate the ADC sensor inputs"
+	default y
+	depends on SHELL
+	help
+	  Adds "sim set/mv/off/show" to the shell: any ADC channel (brake,
+	  susp_l, susp_r, ntc) can be replaced by a value typed on the console.
+	  The value goes through the same filter and conversions as a real
+	  sample, so the brake light and the CAN frames follow it.
+	  Turn it off for the car so a stray console byte can't fake a sensor.
+
 source "Kconfig.zephyr"

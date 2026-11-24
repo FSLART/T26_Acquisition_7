@@ -251,12 +251,15 @@ void can_bus_service(void) {
             reported_state[bus] = s.state;
             reported_error[bus] = s.last_error;
 
+            /* Two lines: each stays under the 256-byte RTT message limit */
             if (s.state == CAN_STATE_ERROR_ACTIVE) {
-                LOG_INF("%s %s | TEC=%u REC=%u | last error: %s", can_bus_name(bus),
-                        can_bus_state_text(s.state), s.tec, s.rec, can_bus_error_text(s.last_error));
+                LOG_INF("%s %s | TEC=%u REC=%u", can_bus_name(bus),
+                        can_bus_state_text(s.state), s.tec, s.rec);
+                LOG_INF("%s last error: %s", can_bus_name(bus), can_bus_error_text(s.last_error));
             } else {
-                LOG_WRN("%s %s | TEC=%u REC=%u | last error: %s", can_bus_name(bus),
-                        can_bus_state_text(s.state), s.tec, s.rec, can_bus_error_text(s.last_error));
+                LOG_WRN("%s %s | TEC=%u REC=%u", can_bus_name(bus),
+                        can_bus_state_text(s.state), s.tec, s.rec);
+                LOG_WRN("%s last error: %s", can_bus_name(bus), can_bus_error_text(s.last_error));
             }
         }
 

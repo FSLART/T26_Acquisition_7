@@ -12,6 +12,7 @@
 #include "watchdog.h"
 #include "conversions.h"
 #include "sensors.h"
+#include "sim.h"
 
 LOG_MODULE_REGISTER(sensors, LOG_LEVEL_INF);
 
@@ -100,6 +101,9 @@ static void sensor_sampling_thread(void *p1, void *p2, void *p3) {
         if (ret < 0) {
             LOG_WRN("ADC read failed (%d)", ret);
         } else {
+            /* Channels overridden with the "sim" shell command replace the real sample */
+            sim_apply(raw_adc_data);
+
             for (size_t channel = 0; channel < SENSOR_ADC_CHANNELS; channel++) {
                 sum[channel] += raw_adc_data[channel];
                 sum[channel] -= history[channel][pos];

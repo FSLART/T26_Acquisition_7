@@ -423,11 +423,13 @@ unpacks it with the DBC function and stores the value behind a getter. Each entr
 | `CONFIG_FPU` | Hardware FPU for the sensor maths |
 | `CONFIG_STATS`, `CONFIG_CAN_STATS` | Per-type CAN error counters used by `can_bus_service()` |
 | `CONFIG_AQT7_DEBUG_PRINT_MS=100` | Sensor values log period, 0 = off (defined in `zephyr_app/Kconfig`) |
+| `CONFIG_USE_SEGGER_RTT`, `CONFIG_LOG_BACKEND_RTT`, `..._RTT_MODE_DROP`, `CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=4096`, `CONFIG_LOG_BACKEND_RTT_MESSAGE_SIZE=256` | Log over SWD (RTT), readable with only the ST-LINK; never blocks when nothing reads it |
 
 ### Debugging
 
-**Log.** USART1, 115200 8N1. Besides start-up messages, CAN health changes and watchdog warnings, the debug
-thread logs the sensor values every 100 ms, like `execute_100ms_tasks()` (illustrative values):
+**Log.** The log goes to two outputs at once: **USART1** (PA9/PA10, 115200 8N1) and **RTT** over SWD (see
+below). Besides start-up messages, CAN health changes and watchdog warnings, the debug thread logs the sensor
+values every 100 ms, like `execute_100ms_tasks()` (illustrative values):
 
 ```
 [00:00:05.100,000] <inf> debug: Rear brake 0.00 bar (adc 762) | Front brake 0.00 bar (coded 0, not arriving)
@@ -435,6 +437,33 @@ thread logs the sensor values every 100 ms, like `execute_100ms_tasks()` (illust
 ```
 
 Set `CONFIG_AQT7_DEBUG_PRINT_MS=0` in `prj.conf` to turn it off, or e.g. `1000` for once per second.
+
+**Reading the log with only the ST-LINK plugged in (RTT).** The AQT7's debug connector carries SWD but not
+USART1, so the ST-LINK's virtual COM port receives nothing. Instead, the firmware also writes the log into a
+4 KB RAM buffer (SEGGER RTT) that OpenOCD reads through the SWD cable while the firmware runs. From
+`zephyr_app`, with the virtual environment active:
+
+```bash
+west rtt -d build --runner openocd
+```
+
+It resets the board, starts OpenOCD (from the Zephyr SDK, configured by `boards/t26/t26_aqt7/support/openocd.cfg`)
+and shows the log in the terminal. `Ctrl+C` stops it. Only one tool can use the ST-LINK at a time: close
+STM32CubeProgrammer, CubeIDE or a running `west debugserver` first.
+
+- With nothing reading RTT (e.g. on the car), lines that don't fit in the buffer are dropped: the firmware
+  never waits for the debugger (`CONFIG_LOG_BACKEND_RTT_MODE_DROP`).
+- An RTT line is at most 256 bytes (`CONFIG_LOG_BACKEND_RTT_MESSAGE_SIZE`); longer ones are cut. Keep log
+  messages shorter than that.
+- To read RTT during a debug session instead, run `west debugserver -d build --runner openocd --rtt-server` and
+  connect a terminal (e.g. PuTTY, raw mode) to `localhost:5555`.
+
+**Reading the log over USART1.** Wire PA9 to STDC14 pin 14 (`T_VCP_TX`) and PA10 to pin 13 (`T_VCP_RX`) of the
+STLINK-V3MINIE (or use a 3.3 V USB-UART adapter), then open the port at 115200:
+
+```bash
+python -m serial.tools.miniterm COM5 115200
+```
 
 **`acq7` snapshot.** `debug.c` refreshes the global `struct acq7_debug acq7` every 10 ms, with the same
 layout as the CubeIDE `acq7`:
@@ -484,7 +513,9 @@ Everything from the STM32CubeIDE firmware is ported. Still to do:
 The Zephyr port is built with **west**, Zephyr's command-line tool. West works in a **workspace**: a folder
 that holds this repository next to the Zephyr source and the modules it needs. This repository is the
 workspace's *manifest repository*. Its `west.yml` pins the Zephyr version (**v4.5.0**) and the modules to
-download (`cmsis_6`, `hal_stm32`), so every team member gets the same versions.
+download (`cmsis_6`, `hal_stm32`, `segger` for RTT logging), so every team member gets the same versions.
+When `west.yml` gains a module (as with `segger`), run `west update` once after pulling, or the build fails
+on the options that need it.
 
 Only this repository is tracked in git. The rest of the workspace is downloaded by `west update` and must
 never be committed:
@@ -495,7 +526,7 @@ never be committed:
 ├── .west\                       <- created by west init (per PC)
 ├── T26_Acquisition_7\           <- this repository
 ├── zephyr\                      <- downloaded by west update
-├── modules\                     <- downloaded by west update (hal_stm32, cmsis_6)
+├── modules\                     <- downloaded by west update (hal_stm32, cmsis_6, segger)
 └── build\                       <- west build output
 ```
 
@@ -644,7 +675,8 @@ The board definition is in `zephyr_app/boards/t26/t26_aqt7/`. The pins and clock
 | `Kconfig.t26_aqt7` | Selects the SoC |
 | `t26_aqt7.dts` | Devicetree: HSI → PLL 96 MHz, APB1 48 MHz, APB2 96 MHz; USART1 console; heartbeat (PC11, aliases `led0`/`heartbeat`) and brake light (PC10, active low, alias `brake-light`); CAN1 (PA11/PA12, alias `can-autonomous`, 75 % sample point) and CAN2 (PB12/PB13, alias `can-data`, 87.5 %), both 1 Mbit/s with RX pull-ups; ADC1 channels 7/8/9/14 (PA7, PB0, PB1, PC4), 12 bit, 480-cycle sampling, listed in `zephyr,user`; IWDG (alias `watchdog0`) |
 | `t26_aqt7_defconfig` | Default Kconfig options for the board (MPU, console) |
-| `board.cmake` | Flash runners: STM32CubeProgrammer (default, software reset) and J-Link |
+| `board.cmake` | Runners: STM32CubeProgrammer (`west flash`, software reset), ST-LINK GDB server (`west debug`), OpenOCD (`west rtt --runner openocd`) and J-Link |
+| `support/openocd.cfg` | OpenOCD setup for the ST-LINK on SWD, used to read RTT |
 | `t26_aqt7.yaml` | Board metadata for Zephyr's test runner (twister) |
 
 Because `led0` points at the heartbeat, Zephyr's blinky sample runs on the board unmodified. This is a

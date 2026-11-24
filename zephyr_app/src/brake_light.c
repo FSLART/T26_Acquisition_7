@@ -14,7 +14,7 @@
 
 LOG_MODULE_REGISTER(brake_light, LOG_LEVEL_INF);
 
-#define BRAKE_LIGHT_PERIOD_MS 50
+#define BRAKE_LIGHT_PERIOD_MS 50 //cycle duration
 #define PRESSURE_LEVEL_REAR 7
 #define PRESSURE_LEVEL_FRONT 7
 

@@ -30,6 +30,9 @@ target_sources(app PRIVATE
   ${REPO_DIR}/Core/DBC/autonomous_t26.c
 )
 
+# "sim" shell command (CONFIG_AQT7_SIM, on by default when the shell is on)
+target_sources_ifdef(CONFIG_AQT7_SIM app PRIVATE src/sim.c)
+
 target_include_directories(app PRIVATE
   ${REPO_DIR}/Core/DBC
 )

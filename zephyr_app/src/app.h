@@ -7,8 +7,6 @@
 
 /*
  * Thread priorities: lower number = runs first (all preemptible).
- * Every thread is defined with SYS_FOREVER_MS as start delay, so it is created at boot but only
- * runs once main calls its module's *_start(), after the hardware it needs is set up.
  */
 #define PRIO_SENSORS     2
 #define PRIO_BRAKE_LIGHT 3
