@@ -12,8 +12,8 @@ set(BOARD t26_aqt7 CACHE STRING "Zephyr board")
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(t26_aqt7)
 
-# Repository root: shared code used by both the STM32CubeIDE and the Zephyr builds
-set(REPO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# Generated DBC code (cantools), updated by a workflow: never edit or move, only reference
+set(DBC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Core/DBC)
 
 target_sources(app PRIVATE
   src/main.c
@@ -25,14 +25,13 @@ target_sources(app PRIVATE
   src/can_tx.c
   src/watchdog.c
   src/debug.c
-  # cantools output, updated by the DBC workflow: never edit, only reference
-  ${REPO_DIR}/Core/DBC/data_t26.c
-  ${REPO_DIR}/Core/DBC/autonomous_t26.c
+  ${DBC_DIR}/data_t26.c
+  ${DBC_DIR}/autonomous_t26.c
 )
 
 # "sim" shell command (CONFIG_AQT7_SIM, on by default when the shell is on)
 target_sources_ifdef(CONFIG_AQT7_SIM app PRIVATE src/sim.c)
 
 target_include_directories(app PRIVATE
-  ${REPO_DIR}/Core/DBC
+  ${DBC_DIR}
 )

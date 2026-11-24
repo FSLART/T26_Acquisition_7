@@ -1,0 +1,7 @@
+# IDE settings (per PC)
+.idea/
+.vscode/
+
+# west build output (west build -d build, CLion, twister)
+/build*/
+/twister-out*/
