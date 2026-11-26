@@ -8,10 +8,11 @@ Firmware for **Acquisition board 7 (AQT7)** of the T26 car, built on **Zephyr RT
 - drives the **brake light** from the front and rear pressures,
 - publishes the measurements on two CAN buses (Autonomous and DATA),
 - supervises every thread with the independent watchdog,
-- logs on UART and over SWD (RTT), and exposes a debug snapshot (`acq7`) for live views in the debugger.
+- has a shell and log reachable through the ST-LINK alone (RTT over SWD) or on UART, and a debug snapshot
+  (`acq7`) for live views in the debugger.
 
 The firmware used to be an STM32CubeIDE/HAL project. That code was removed when the Zephyr port replaced it;
-it is still in the git history (e.g. commit `cf921e8`, the last HAL-only version). See
+it is still in the git history. See
 [Changes from the STM32CubeIDE firmware](#changes-from-the-stm32cubeide-firmware).
 
 To set up a development PC, see [Development setup](#development-setup).
@@ -276,22 +277,58 @@ The ADC channels and their order come from the devicetree (`zephyr,user` → `io
 | `CONFIG_GPIO`, `CONFIG_ADC`, `CONFIG_CAN`, `CONFIG_WATCHDOG` | Drivers for the devicetree nodes |
 | `CONFIG_STATS`, `CONFIG_CAN_STATS` | Per-type CAN error counters used by `can_bus_service()` |
 | `CONFIG_REBOOT` | `sys_reboot()`, used by `watchdog_fail()` if the IWDG isn't running |
-| `CONFIG_LOG`, `CONFIG_LOG_DEFAULT_LEVEL=3` | Log on the console (USART1) and RTT, level INF |
-| `CONFIG_USE_SEGGER_RTT`, `CONFIG_LOG_BACKEND_RTT`, `..._RTT_MODE_DROP`, `CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=4096`, `CONFIG_LOG_BACKEND_RTT_MESSAGE_SIZE=256` | Log over SWD (RTT), readable with only the ST-LINK; never blocks when nothing reads it |
+| `CONFIG_LOG`, `CONFIG_LOG_DEFAULT_LEVEL=3` | Log at level INF, shown on both shells |
+| `CONFIG_USE_SEGGER_RTT`, `CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=4096`, `CONFIG_SEGGER_RTT_BUFFER_SIZE_DOWN=128` | RTT buffers: 4 KB out (log), 128 bytes in (a whole typed or pasted command) |
+| `CONFIG_LOG_BACKEND_RTT=n` | The log reaches RTT through the RTT shell; a second RTT log output on the same channel would interleave with it |
 | `CONFIG_CBPRINTF_FP_SUPPORT` | `%f` in log messages |
 | `CONFIG_FPU` | Hardware FPU for the sensor maths |
 | `CONFIG_AQT7_DEBUG_PRINT_MS=100` | Sensor values log period, 0 = off (defined in `Kconfig`) |
-| `CONFIG_SHELL`, `CONFIG_SHELL_BACKEND_SERIAL`, `CONFIG_*_SHELL` | Shell on USART1 with `gpio`, `can`, `kernel`, `device` and `sim` commands |
+| `CONFIG_SHELL`, `CONFIG_SHELL_BACKEND_RTT`, `CONFIG_SHELL_BACKEND_SERIAL`, `CONFIG_*_SHELL` | Shell over RTT and on USART1, with `gpio`, `can`, `kernel`, `device` and `sim` commands |
 
 ---
 
 ## Debugging
 
+### Console: log and shell over the ST-LINK
+
+The firmware has a **shell** (a command line) on two transports, each showing the full log:
+
+| Transport | Prompt | Needs |
+|---|---|---|
+| **RTT** over SWD | `rtt:~$` | **Only the ST-LINK cable**, nothing else |
+| **USART1**, 115200 8N1 | `uart:~$` | PA9/PA10 wired to the ST-LINK's VCP or to a USB-UART adapter |
+
+**With only the ST-LINK plugged in.** From the repository folder, with the virtual environment active:
+
+```bash
+west rtt -d build --runner openocd
+```
+
+It resets the board, starts OpenOCD (from the Zephyr SDK, configured by `boards/t26/t26_aqt7/support/openocd.cfg`)
+and opens an interactive terminal: the log scrolls, and you type commands at the `rtt:~$` prompt (try `help`,
+`kernel uptime`, `sim show`). `Ctrl+C` stops it. Only one tool can use the ST-LINK at a time: close
+STM32CubeProgrammer or a running `west debugserver` first.
+
+How it works: RTT (SEGGER Real-Time Transfer) is a pair of RAM buffers in the firmware, 4 KB out and 128 bytes
+in. OpenOCD reads and writes them through the SWD cable while the firmware runs, and serves them on TCP port
+5555; `west rtt` connects a terminal to that port.
+
+- With nothing reading RTT (e.g. on the car), the shell notices and drops its output: the firmware never waits
+  for the debugger.
+- To use the RTT shell during a debug session, run `west debugserver -d build --runner openocd --rtt-server`
+  and connect a raw TCP terminal (e.g. PuTTY, connection type *Raw*) to `localhost:5555`.
+
+**Over USART1.** Wire PA9 to STDC14 pin 14 (`T_VCP_TX`) and PA10 to pin 13 (`T_VCP_RX`) of the STLINK-V3MINIE
+(or use a 3.3 V USB-UART adapter), then open the port (`python -m serial.tools.list_ports -v` lists them):
+
+```bash
+python -m serial.tools.miniterm COM5 115200
+```
+
 ### Log
 
-The log goes to two outputs at once: **RTT** over SWD and **USART1** (115200 8N1). Besides start-up messages,
-CAN health changes and watchdog warnings, the debug thread logs the sensor values every 100 ms (illustrative
-values):
+Besides start-up messages, CAN health changes and watchdog warnings, the debug thread logs the sensor values
+every `CONFIG_AQT7_DEBUG_PRINT_MS` (illustrative values):
 
 ```
 [00:00:05.100,000] <inf> debug: Rear brake 0.00 bar (adc 762) | Front brake 0.00 bar (coded 0, not arriving)
@@ -301,37 +338,22 @@ values):
 Set `CONFIG_AQT7_DEBUG_PRINT_MS=0` in `prj.conf` to turn it off, or e.g. `1000` for once per second. A healthy
 start shows `IWDG running, 2000 ms timeout` and, ~100 ms later, `Suspension zeroed: ...`.
 
-**With only the ST-LINK plugged in (RTT).** The AQT7's debug connector carries SWD but not USART1, so the
-ST-LINK's virtual COM port receives nothing. The firmware also writes the log into a 4 KB RAM buffer (SEGGER
-RTT) that OpenOCD reads through the SWD cable while the firmware runs. From the repository folder, with the
-virtual environment active:
+### Shell commands and sensor simulation
 
-```bash
-west rtt -d build --runner openocd
-```
+Type `help` for the full list, and press `Tab` to complete commands and arguments. Useful ones:
 
-It resets the board, starts OpenOCD (from the Zephyr SDK, configured by `boards/t26/t26_aqt7/support/openocd.cfg`)
-and shows the log in the terminal. `Ctrl+C` stops it. Only one tool can use the ST-LINK at a time: close
-STM32CubeProgrammer or a running `west debugserver` first.
+| Command | Does |
+|---|---|
+| `kernel uptime` | Time since boot |
+| `kernel thread list` | Every thread with its state, priority and stack usage |
+| `device list` | Drivers and whether they started (ADC, CAN, watchdog, ...) |
+| `can show can@40006400` | CAN1 state and error counters (`can@40006800` = CAN2) |
+| `can send can@40006400 123 01 02` | Send a frame on the **real** bus (here ID 0x123, 2 bytes). The board doesn't receive its own frames, so this tests the bus and the other nodes, not this firmware's RX |
+| `gpio get gpio@40020800 10` | Read a pin (here PC10, the brake light) |
+| `log halt` / `log go` | Pause / resume the log on this console while typing |
 
-- With nothing reading RTT (e.g. on the car), lines that don't fit in the buffer are dropped: the firmware never
-  waits for the debugger.
-- An RTT line is at most 256 bytes; longer ones are cut. Keep log messages shorter than that.
-- To read RTT during a debug session, run `west debugserver -d build --runner openocd --rtt-server` and connect
-  a terminal (e.g. PuTTY, raw mode) to `localhost:5555`.
-
-**Over USART1.** Wire PA9 to STDC14 pin 14 (`T_VCP_TX`) and PA10 to pin 13 (`T_VCP_RX`) of the STLINK-V3MINIE
-(or use a 3.3 V USB-UART adapter), then open the port (`python -m serial.tools.list_ports -v` lists them):
-
-```bash
-python -m serial.tools.miniterm COM5 115200
-```
-
-### Shell and sensor simulation
-
-The Zephyr shell runs on USART1 (it needs the UART wiring above). Besides Zephyr's `gpio`, `can`, `kernel` and
-`device` commands, `sim` replaces an ADC input with a typed value, which then goes through the same filter,
-conversions, brake light and CAN frames as a real sample:
+`sim` replaces an ADC input with a typed value, which then goes through the same filter, conversions, brake
+light and CAN frames as a real sample:
 
 | Command | Does |
 |---|---|
@@ -340,8 +362,10 @@ conversions, brake light and CAN frames as a real sample:
 | `sim off [channel]` | Back to the real input (all channels if none given) |
 | `sim show` | Override state and the resulting sensor values |
 
-`log halt` / `log go` pause and resume the 100 ms sensor log while typing. Turn `CONFIG_AQT7_SIM` off for the
-car, so a stray console byte can't fake a sensor. `can send` puts frames on the real bus.
+Example: `sim mv brake 2000` reports `brake SIM 2482 counts, 2000 mV, 48.52 bar` in `sim show` and turns the
+brake light on; `sim off` goes back to the real sensor.
+
+Turn `CONFIG_AQT7_SIM` off for the car, so a stray console byte can't fake a sensor.
 
 ### `acq7` snapshot
 
@@ -543,7 +567,8 @@ faster rebuilds.
 C:\ST\STM32CubeCLT_1.23.0\STM32CubeProgrammer\bin
 ```
 
-Then read the log with `west rtt -d build --runner openocd` (see [Log](#log)).
+Then open the log and shell with `west rtt -d build --runner openocd` (see
+[Console](#console-log-and-shell-over-the-st-link)).
 
 ### The t26_aqt7 board
 
