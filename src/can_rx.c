@@ -68,6 +68,7 @@ static void can_handle_autonomous_rx(const struct can_frame *frame) {
             struct autonomous_t26_aqt1_t aqt1;
 
             if (autonomous_t26_aqt1_unpack(&aqt1, frame->data, can_dlc_to_bytes(frame->dlc)) < 0) {
+                LOG_WRN("Dropped invalid CAN1 frame");
                 return;
             }
 
