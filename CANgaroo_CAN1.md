@@ -1,6 +1,6 @@
 # Interface Config
 - bitrate: 1000000
- - sample point: 87.5% (Cláudio diz que devia ser 75%, vem da config do IOC)
+ - sample point: 75% (o mesmo da placa: `sample-point = <750>` no devicetree, vem da config do IOC)
 
 # CANgaroo Test Message
 ID: 710

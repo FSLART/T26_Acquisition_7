@@ -8,3 +8,6 @@ ram: 256
 flash: 512
 supported:
   - gpio
+  - adc
+  - can
+  - watchdog
