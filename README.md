@@ -508,8 +508,8 @@ never be committed:
 └── modules\                     <- downloaded by west update (hal_stm32, cmsis_6, segger)
 ```
 
-The commands below are for **Windows PowerShell**. On Linux or macOS, use `/` in paths and activate the
-virtual environment with `source .venv/bin/activate`.
+The steps below are for **Windows PowerShell**. **Linux (Ubuntu/Debian)** has its own section:
+[Linux setup](#linux-setup).
 
 ### 1. Install the host tools (once per PC)
 
@@ -667,6 +667,95 @@ west twister -T tests -p native_sim/native/64
 
 The brake pressure tests assume the current calibration (`OFFSET_VOLTAGE = 0.614`, `CONVERSION_FACTOR = 1.0`).
 After a re-calibration or a divider on PA7, update the expected values in `tests/conversions/src/main.c`.
+
+### Linux setup
+
+Same workspace layout as on Windows, with `/` in paths and `source .venv/bin/activate`. Tested on Ubuntu; the
+package names are the Debian/Ubuntu ones.
+
+1. Install the host tools (once per PC), then the ST-LINK udev rules (OpenOCD's package ships them) and give
+   your user access to the USB probe:
+
+   ```bash
+   sudo apt update
+   sudo apt install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget \
+       python3-dev python3-pip python3-venv python3-setuptools python3-wheel xz-utils file make gcc \
+       libsdl2-dev libmagic1 openocd
+   sudo usermod -aG plugdev,dialout $USER
+   ```
+
+   Log out and back in so the groups apply. Check `cmake --version` is 3.20 or newer.
+
+2. Create the workspace, clone the repository, create the virtual environment:
+
+   ```bash
+   mkdir -p ~/t26ws && cd ~/t26ws
+   git clone git@github.com:FSLART/T26_Acquisition_7.git
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install west
+   ```
+
+3. Initialise the workspace and download Zephyr (same as Windows step 4):
+
+   ```bash
+   west init -l T26_Acquisition_7
+   west update
+   pip install -r zephyr/scripts/requirements.txt
+   west zephyr-export
+   west config build.board t26_aqt7
+   west sdk install
+   ```
+
+4. Install **STM32CubeCLT** for Linux (`.sh` installer from st.com, free login required). It installs to
+   `/opt/st/stm32cubeclt_<version>/`. Put the programmer on your `PATH` (adjust the version) in `~/.bashrc` or
+   `~/.zshrc`:
+
+   ```bash
+   export PATH="$PATH:/opt/st/stm32cubeclt_1.23.0/STM32CubeProgrammer/bin"
+   ```
+
+5. Build and flash, from the repository folder with the virtual environment active:
+
+   ```bash
+   cd ~/t26ws/T26_Acquisition_7
+   west build -p
+   west flash
+   ```
+
+   The blinky check from [The t26_aqt7 board](#the-t26_aqt7-board), run from `~/t26ws`:
+
+   ```bash
+   west build -d build-blinky -b t26_aqt7 zephyr/samples/basic/blinky -p -- -DBOARD_ROOT=$HOME/t26ws/T26_Acquisition_7
+   west flash -d build-blinky
+   ```
+
+6. **CLion:** open `~/t26ws/T26_Acquisition_7/CMakeLists.txt` as a project (File → Open → Open as Project).
+   If CLion shows the generic *Open Project Wizard* (Debug profile, Ninja, `cmake-build-debug`) instead of
+   the West settings, it did not find the workspace: cancel it and check that `~/t26ws/.west/` exists, i.e.
+   the repository is *inside* the workspace folder. Then set **Settings → Build, Execution, Deployment →
+   West**:
+
+   | Setting | Value |
+   |---|---|
+   | Toolchain | Use default |
+   | West executable | `~/t26ws/.venv/bin/west` (use the full path; CLion does not expand `~`) |
+   | Board name | **Let CMake decide** |
+   | Build directory | Outside the repository, e.g. `~/t26ws/build-clion` |
+
+   If the CLion you use is the Snap, it may not see the venv or `/opt/st`: use the full paths above, or
+   install the `.deb`/Toolbox build.
+
+Every new terminal: `source ~/t26ws/.venv/bin/activate`. To update after a pull: `git pull && west update`.
+
+Linux-specific problems:
+
+| Error | Cause | Fix |
+|---|---|---|
+| `No debug probe detected` / `LIBUSB_ERROR_ACCESS` | No permission on the ST-LINK USB device | Install `openocd` (udev rules), add your user to `plugdev`, log out/in, replug the probe |
+| `west flash` can't find `STM32_Programmer_CLI` | CubeProgrammer not on `PATH` | Step 4 above; open a new terminal |
+| `/dev/ttyACM0: Permission denied` | User not in `dialout` | `sudo usermod -aG dialout $USER`, log out/in |
+| `west: command not found` | Virtual environment not active | `source ~/t26ws/.venv/bin/activate` |
 
 ### The t26_aqt7 board
 
