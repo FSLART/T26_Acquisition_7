@@ -1,13 +1,13 @@
 <cangaroo-workspace cangaroo-version="0.7.2" workspace-version="1">
  <tabs>
-  <tab ActiveTab="0" TimestampMode="2" dockstate="AAAA/wAAAAD9AAAAAQAAAAMAAAVTAAAB5/wBAAAAAvwAAAAAAAACLQAAAVQA////+gAAAAABAAAAAvsAAAAWAGQAbwBjAGsAXwBzAHQAYQB0AHUAcwEAAAAA/////wAAAD4A////+wAAABAAZABvAGMAawBfAGwAbwBnAQAAAAD/////AAABVAD////8AAACMwAAAyAAAAMgAP////oAAAAAAQAAAAT7AAAAHABkAG8AYwBrAF8AZwBlAG4AZQByAGEAdABvAHIBAAAAAP////8AAAMgAP////sAAAAUAGQAbwBjAGsAXwBnAHIAYQBwAGgBAAAAAP////8AAAJzAP////sAAAAWAGQAbwBjAGsAXwBzAGMAcgBpAHAAdAEAAAAA/////wAAAT0A////+wAAABYAZABvAGMAawBfAHIAZQBwAGwAYQB5AQAAAAD/////AAABfwD///8AAAVTAAABKAAAAAQAAAAEAAAACAAAAAj8AAAAAA==" mode="aggregated" modeJ1939="aggregated" modeUds="unified" title="Trace" type="TraceWindow">
+  <tab ActiveTab="0" TimestampMode="2" dockstate="AAAA/wAAAAD9AAAAAQAAAAMAAAd+AAAB5/wBAAAAAvwAAAAAAAADEQAAAVQA////+gAAAAABAAAAAvsAAAAWAGQAbwBjAGsAXwBzAHQAYQB0AHUAcwEAAAAA/////wAAAD4A////+wAAABAAZABvAGMAawBfAGwAbwBnAQAAAAD/////AAABVAD////8AAADFwAABGcAAAMgAP////oAAAAAAQAAAAT7AAAAHABkAG8AYwBrAF8AZwBlAG4AZQByAGEAdABvAHIBAAAAAP////8AAAMgAP////sAAAAUAGQAbwBjAGsAXwBnAHIAYQBwAGgBAAAAAP////8AAAJzAP////sAAAAWAGQAbwBjAGsAXwBzAGMAcgBpAHAAdAEAAAAA/////wAAAT0A////+wAAABYAZABvAGMAawBfAHIAZQBwAGwAYQB5AQAAAAD/////AAABfwD///8AAAd+AAABlQAAAAQAAAAEAAAACAAAAAj8AAAAAA==" mode="aggregated" modeJ1939="aggregated" modeUds="unified" title="Trace" type="TraceWindow">
    <AggregatedTraceView SortColumn="-1"/>
    <TraceFilter showRx="1" showTx="1"/>
    <txgeneratorwindow splitterState="AAAA/wAAAAEAAAACAAACbgAAAb0B/////wEAAAABAA==" type="TxGeneratorWindow">
     <frame brs="0" data="F4 01 03" dlc="3" extended="0" fd="0" id="0X710" interface="Network 1: COM6" interval="50" name="AQT1"/>
    </txgeneratorwindow>
    <scriptwindow autorun="0" file=""/>
-   <graphwindow duration="1" tabWidgetWidth="476" type="GraphWindow" viewType="0"/>
+   <graphwindow duration="1" tabWidgetWidth="473" type="GraphWindow" viewType="0"/>
   </tab>
  </tabs>
  <setup>

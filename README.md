@@ -429,7 +429,7 @@ All of the HAL firmware's functionality is ported. Deliberate differences:
 | `acq7.io.brake_light` | Raw pin level (0 = on) | Logical (1 = on) |
 | Log | `printf` in Portuguese, UART only | Zephyr log in English, UART + RTT |
 
-Still to do: **unit tests** for `conversions.c` (ztest on `native_sim`).
+Unit tests cover `conversions.c` only (see [Unit tests](#unit-tests)); the other modules have none yet.
 
 ---
 
@@ -593,6 +593,20 @@ The log stays on USART1. West prints warnings that the `CONFIG_*_SHELL` options 
 but got the value `n`; they are expected. To keep the shell and only remove `sim`, use `-DCONFIG_AQT7_SIM=n`
 instead. The option is stored in the build folder: a later `west build -p` without it goes back to the
 development build.
+
+### Unit tests
+
+`tests/conversions/` holds 13 ztest unit tests for `src/conversions.c` (brake pressure, suspension, NTC), with
+expected values worked out by hand from the sensor datasheets and the board circuit. They run on the PC as a
+`native_sim` program, which only builds on **Linux**: on Windows, use WSL (Ubuntu) with the Zephyr SDK and
+Zephyr's Python requirements installed there. From the repository folder:
+
+```bash
+west twister -T tests -p native_sim/native/64
+```
+
+The brake pressure tests assume the current calibration (`OFFSET_VOLTAGE = 0.614`, `CONVERSION_FACTOR = 1.0`).
+After a re-calibration or a divider on PA7, update the expected values in `tests/conversions/src/main.c`.
 
 ### The t26_aqt7 board
 
