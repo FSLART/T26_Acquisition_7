@@ -53,7 +53,7 @@ No external crystal is used. All of it is set in `boards/t26/t26_aqt7/t26_aqt7.d
 | PB0 | `SUSP_LEFT` – ADC1_IN8 | Left suspension potentiometer |
 | PB1 | `SUSP_RIGHT` – ADC1_IN9 | Right suspension potentiometer |
 | PC4 | `NTC1` – ADC1_IN14 | Coolant NTC |
-| PC10 | `BRAKE_LIGHT` – output | **Active low**: driven LOW while braking |
+| PC10 | `BRAKE_LIGHT` – output | **Active high**: drives the light's MOSFET gate (pull-down to GND), HIGH while braking |
 | PC11 | `HEARTBEAT` – output | Toggles every 100 ms |
 | PA11 / PA12 | CAN1 RX / TX | Autonomous bus, RX pull-up |
 | PB12 / PB13 | CAN2 RX / TX | DATA bus, RX pull-up |
@@ -99,8 +99,8 @@ The conversions are in `src/conversions.c`. They are plain C with no Zephyr call
 
 ### Brake light – `src/brake_light.c`
 
-Every 50 ms, PC10 is driven **LOW** (light on) if the rear pressure ≥ `PRESSURE_LEVEL_REAR` **or** the front
-pressure ≥ `PRESSURE_LEVEL_FRONT` (both 7 bar), and HIGH otherwise. If the front pressure frame is lost, the
+Every 50 ms, PC10 is driven **HIGH** (light on) if the rear pressure ≥ `PRESSURE_LEVEL_REAR` **or** the front
+pressure ≥ `PRESSURE_LEVEL_FRONT` (both 7 bar), and LOW otherwise. If the front pressure frame is lost, the
 light follows the rear pressure only. The light is off at boot.
 
 ### Suspension – `MeasureSuspensionPosition()`
@@ -256,6 +256,62 @@ The ADC channels and their order come from the devicetree (`zephyr,user` → `io
 | `CONFIG_AQT7_DEBUG_PRINT_MS=1000` | Sensor values log period, 0 = off (defined in `Kconfig`, default 100) |
 | `CONFIG_SHELL`, `CONFIG_SHELL_BACKEND_RTT`, `CONFIG_SHELL_BACKEND_SERIAL`, `CONFIG_*_SHELL` | Shell over RTT and on USART1, with `gpio`, `can`, `kernel`, `device` and `sim` commands |
 | `CONFIG_SHELL_STACK_SIZE=3072` | The log's float formatting runs in the shell thread and needs the extra stack |
+
+### Firmware version
+
+Every build knows its **version** (semver) and the **git commit** it was built from. A future CAN updater
+will use this to tell which firmware a board runs. Both come from Zephyr's version system:
+
+- **`VERSION`** (repository root) holds `VERSION_MAJOR`, `VERSION_MINOR`, `PATCHLEVEL` and `VERSION_TWEAK`.
+  Zephyr turns it into `zephyr/app_version.h` (`APP_VERSION_STRING`, `APP_VERSION_MAJOR`, ...).
+- **`APP_BUILD_VERSION`** in the same header is `git describe --abbrev=12 --always` of this repository, i.e.
+  the commit hash (`83c5bc60089d`). `CMakeLists.txt` makes the header regenerate whenever HEAD, the branch or
+  the git index changes, so an incremental build also reports the right commit.
+- There is **no dirty flag**: a build with uncommitted changes reports the HEAD commit. Firmware that goes on
+  the car should come from a CI release, which is always built from a clean commit.
+
+Where it shows:
+
+| Where | What |
+|---|---|
+| Boot log | `T26 AQT7 fw 0.1.0 (83c5bc60089d) starting on t26_aqt7` |
+| Shell | `app version` (`0.1.0`), `app version-extended` (`0.1.0+0`), `app build-version` (the commit), from Zephyr's `CONFIG_APP_VERSION_SHELL` |
+| Code | `fw_version_string()`, and `fw_version_get_hash()` for the hash as 6 bytes (e.g. for a CAN frame) |
+| Flash | The `fw_info` block, below |
+
+**`fw_info` block.** `src/fw_version.c` puts a 48-byte block right after the vector table (`0x08000150` in the
+current build; `fw_info` in `build/zephyr/zephyr.map`), so a bootloader or updater can read the version from
+an image without running it. It starts with the magic bytes `AQ7I`; search for them (4-byte aligned) in the
+first 1 KiB of the image. Little-endian:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | `magic` = `0x49375141` (bytes `AQ7I`) |
+| 4 | 1 | `info_version` = 1, the layout version: bump `FW_INFO_VERSION` whenever the layout changes |
+| 5 | 3 | `major`, `minor`, `patch` |
+| 8 | 4 | `tweak` |
+| 12 | 32 | `build`: `APP_BUILD_VERSION` as text, NUL-terminated |
+| 44 | 4 | reserved (0) |
+
+There is **no CAN frame for the version yet**. It will be added once the DBC defines the message. The frame
+code goes in `can_tx.c`, like the other frames, and gets the bytes from `fw_version_get_hash()`.
+
+**Versions are set by CI** (`.github/workflows/firmware.yml`):
+
+- On every push and pull request: the unit tests (twister on `native_sim`) and a firmware build, both the
+  development build and the car build (`CONFIG_SHELL=n`).
+- On a push to `main` that passes: `scripts/ci_bump_version.sh` picks the next version, CI commits `VERSION`
+  (`chore: release vX.Y.Z [skip ci]`), tags it `vX.Y.Z`, builds that commit and publishes a **GitHub Release**
+  with `t26_aqt7-vX.Y.Z.{hex,bin,elf}`, the car build `t26_aqt7-vX.Y.Z-car.*` and `version.json`
+  (version + commit).
+- The next version is the last tag's `PATCHLEVEL` + 1. To release a new **MINOR** or **MAJOR**, edit
+  `VERSION` in the pull request (e.g. `0.2.0`): if it is above the last tag, CI keeps it. Don't edit
+  `PATCHLEVEL` by hand otherwise.
+- The tags are **lightweight on purpose**. `git describe` ignores lightweight tags, so `APP_BUILD_VERSION` stays
+  the plain commit hash even on a released commit. Don't create annotated tags (`git tag -a`) in this
+  repository: on a commit with one, the build would report only the tag name, and `fw_version_get_hash()`
+  would fail.
+- If `main` has branch protection, it must allow GitHub Actions to push, or the release job fails.
 
 ---
 
@@ -420,7 +476,7 @@ All of the HAL firmware's functionality is ported. Deliberate differences:
 | Scheduling | Super-loop with 10/50/100/125 ms tasks | One thread per job |
 | Moving average | 1 sample every 50 ms → ~500 ms window | 1 sample every 10 ms → 100 ms window (faster brake light) |
 | Suspension zero | ~500 ms after boot | ~100 ms after boot |
-| Brake light at boot | On until the first 50 ms task | Off |
+| Brake light polarity | PC10 LOW while braking, so the light was on when **not** braking | PC10 HIGH while braking (the MOSFET gate has a pull-down, so HIGH = on) |
 | 0x710 decoding | Bytes 0–1, any length | DBC unpack, which needs **at least 3 bytes** (AQT1 in the DBC). If AQT1 sends 2 bytes, the front pressure stays 0 |
 | Stale CAN frames | An older copy of the same ID still waiting in a mailbox is aborted | The new frame is dropped if the mailboxes are full |
 | Watchdog | Fed by the main loop every 10 ms | Fed only while every thread checks in |
@@ -429,7 +485,7 @@ All of the HAL firmware's functionality is ported. Deliberate differences:
 | `acq7.io.brake_light` | Raw pin level (0 = on) | Logical (1 = on) |
 | Log | `printf` in Portuguese, UART only | Zephyr log in English, UART + RTT |
 
-Unit tests cover `conversions.c` only (see [Unit tests](#unit-tests)); the other modules have none yet.
+Unit tests cover `conversions.c` and `fw_version.c` only (see [Unit tests](#unit-tests)); the other modules have none yet.
 
 ---
 
@@ -599,7 +655,11 @@ development build.
 `tests/conversions/` holds 13 ztest unit tests for `src/conversions.c` (brake pressure, suspension, NTC), with
 expected values worked out by hand from the sensor datasheets and the board circuit. They run on the PC as a
 `native_sim` program, which only builds on **Linux**: on Windows, use WSL (Ubuntu) with the Zephyr SDK and
-Zephyr's Python requirements installed there. From the repository folder:
+Zephyr's Python requirements installed there. CI runs them on every push (see
+[Firmware version](#firmware-version)).
+
+`tests/version/` holds 6 tests for `src/fw_version.c`: commit hash parsing and the `fw_info` contents. It has
+its own `VERSION` (1.2.3+4), not the firmware's, and the build needs git. From the repository folder:
 
 ```bash
 west twister -T tests -p native_sim/native/64
@@ -617,7 +677,7 @@ which is only a reference: Zephyr doesn't use CubeMX or its generated code.
 |---|---|
 | `board.yml` | Board name and SoC (`stm32f412rx`) |
 | `Kconfig.t26_aqt7` | Selects the SoC |
-| `t26_aqt7.dts` | Devicetree: HSI → PLL 96 MHz, APB1 48 MHz, APB2 96 MHz; USART1 console; heartbeat (PC11, aliases `led0`/`heartbeat`) and brake light (PC10, active low, alias `brake-light`); CAN1 (PA11/PA12, alias `can-autonomous`, 75 % sample point) and CAN2 (PB12/PB13, alias `can-data`, 87.5 %), both 1 Mbit/s with RX pull-ups; ADC1 channels 7/8/9/14 (PA7, PB0, PB1, PC4), 12 bit, 480-cycle sampling, listed in `zephyr,user`; IWDG (alias `watchdog0`) |
+| `t26_aqt7.dts` | Devicetree: HSI → PLL 96 MHz, APB1 48 MHz, APB2 96 MHz; USART1 console; heartbeat (PC11, aliases `led0`/`heartbeat`) and brake light (PC10, active high, alias `brake-light`); CAN1 (PA11/PA12, alias `can-autonomous`, 75 % sample point) and CAN2 (PB12/PB13, alias `can-data`, 87.5 %), both 1 Mbit/s with RX pull-ups; ADC1 channels 7/8/9/14 (PA7, PB0, PB1, PC4), 12 bit, 480-cycle sampling, listed in `zephyr,user`; IWDG (alias `watchdog0`) |
 | `t26_aqt7_defconfig` | Default Kconfig options for the board (MPU, console) |
 | `board.cmake` | Runners: STM32CubeProgrammer (`west flash`, software reset), ST-LINK GDB server (`west debug`), OpenOCD (`west rtt --runner openocd`) and J-Link |
 | `support/openocd.cfg` | OpenOCD setup for the ST-LINK on SWD, used to read RTT |

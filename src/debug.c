@@ -21,7 +21,7 @@ LOG_MODULE_REGISTER(debug, LOG_LEVEL_INF);
 struct acq7_debug acq7;
 
 /* Read only: the pins are driven by brake_light.c and main.c */
-static const struct gpio_dt_spec brake_light_pin = GPIO_DT_SPEC_GET(DT_ALIAS(brake_light), gpios);
+//static const struct gpio_dt_spec brake_light_pin = GPIO_DT_SPEC_GET(DT_ALIAS(brake_light), gpios);
 static const struct gpio_dt_spec heartbeat_pin = GPIO_DT_SPEC_GET(DT_ALIAS(heartbeat), gpios);
 
 static void debug_update(void) {
@@ -42,8 +42,8 @@ static void debug_update(void) {
     acq7.sensors.susp_right_mm = acq7_data.susp_right_mm;
     acq7.sensors.ntc1_c = acq7_data.ntc1_c;
 
-    /* Logical levels: brake_light 1 = on (the pin is active low) */
-    acq7.io.brake_light = (uint8_t) gpio_pin_get_dt(&brake_light_pin);
+    /* Logical levels: brake_light 1 = on (PC10 high) */
+    acq7.io.brake_light = (uint8_t) 0/*gpio_pin_get_dt(&brake_light_pin)*/;
     acq7.io.heartbeat = (uint8_t) gpio_pin_get_dt(&heartbeat_pin);
 
     acq7.front.coded = front_brake_data.coded;

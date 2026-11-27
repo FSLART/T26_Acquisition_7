@@ -31,8 +31,8 @@
 			label = "Heartbeat";
 		};
 
-		/* PC10, active low: the pin is driven LOW to turn the brake light on.
-		 * With GPIO_ACTIVE_LOW, gpio_pin_set_dt(..., 1) means "light on".
+		/* LIGHT SHOULD TURN ON WHEN BRAKING
+		 * 10Kohm pull down on R55 with TYPE P MOSFET (NOT N, IGNORE SCH)
 		 */
 		brake_light: brake_light {
 			gpios = <&gpioc 10 GPIO_ACTIVE_LOW>;

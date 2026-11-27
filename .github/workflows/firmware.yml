@@ -1,0 +1,132 @@
+# Tests and firmware build on every push and pull request.
+# On a push to main that passes, CI bumps VERSION (scripts/ci_bump_version.sh), commits it, tags it
+# vX.Y.Z (lightweight tag, see the README "Firmware version") and publishes a GitHub Release with the
+# firmware built from that exact commit.
+name: Firmware
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+  pull_request:
+
+env:
+  # west.yml names this repository's folder T26_Acquisition_7 (manifest self.path)
+  APP: T26_Acquisition_7
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP }}
+          fetch-depth: 0  # full history and tags, for git describe
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Zephyr (west update, SDK)
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: ${{ env.APP }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Unit tests (twister, native_sim)
+        run: west twister -T ${{ env.APP }}/tests -p native_sim/native/64 --inline-logs -v
+
+      - name: Build firmware
+        run: west build -b t26_aqt7 -d build ${{ env.APP }}
+
+      - name: Build firmware for the car (no shell)
+        run: west build -b t26_aqt7 -d build-car ${{ env.APP }} -- -DCONFIG_SHELL=n
+
+  release:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # push the VERSION commit and the tag, create the release
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP }}
+          fetch-depth: 0
+
+      - name: Skip if this commit is already released
+        id: check
+        working-directory: ${{ env.APP }}
+        run: |
+          if [ -n "$(git tag --points-at HEAD --list 'v[0-9]*')" ]; then
+            echo "HEAD is already tagged: nothing to release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump VERSION, commit and tag
+        if: steps.check.outputs.skip != 'true'
+        id: bump
+        working-directory: ${{ env.APP }}
+        run: |
+          version=$(bash scripts/ci_bump_version.sh VERSION)
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- VERSION; then
+            git commit -m "chore: release v$version [skip ci]" -- VERSION
+          fi
+          # Lightweight on purpose: git describe ignores it, so APP_BUILD_VERSION stays the commit hash
+          git tag "v$version"
+          # Fails if main moved since this run started: re-run the job
+          git push origin HEAD:main "v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Zephyr (west update, SDK)
+        if: steps.check.outputs.skip != 'true'
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: ${{ env.APP }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Build the release commit
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          west build -b t26_aqt7 -d build ${{ env.APP }}
+          west build -b t26_aqt7 -d build-car ${{ env.APP }} -- -DCONFIG_SHELL=n
+
+      - name: Publish GitHub Release
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          SHA: ${{ steps.bump.outputs.sha }}
+        run: |
+          set -euo pipefail
+          build=$(sed -n 's/^#define APP_BUILD_VERSION \(.*\)$/\1/p' build/zephyr/include/generated/zephyr/app_version.h)
+          mkdir dist
+          for f in hex bin elf; do
+            cp build/zephyr/zephyr.$f     dist/t26_aqt7-v$VERSION.$f
+            cp build-car/zephyr/zephyr.$f dist/t26_aqt7-v$VERSION-car.$f
+          done
+          printf '{"version":"%s","commit":"%s","build":"%s"}\n' "$VERSION" "$SHA" "$build" > dist/version.json
+          cat > notes.md <<NOTES
+          Firmware **v$VERSION**, commit \`$SHA\` (reported by the board as \`$build\`).
+
+          - \`t26_aqt7-v$VERSION.*\`: development build (RTT/UART shell, \`sim\`)
+          - \`t26_aqt7-v$VERSION-car.*\`: car build (\`CONFIG_SHELL=n\`)
+          - \`version.json\`: version and commit, for the CAN updater
+          NOTES
+          gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "v$VERSION" --notes-file notes.md --verify-tag

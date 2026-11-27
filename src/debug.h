@@ -33,7 +33,7 @@ struct acq7_debug {
     } sensors;
 
     struct {
-        uint8_t brake_light;                    /* 1 = light on (PC10 driven low) */
+        uint8_t brake_light;                    /* 1 = light on (PC10 driven high) */
         uint8_t heartbeat;                      /* PC11 level */
     } io;
 

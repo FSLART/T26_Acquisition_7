@@ -1,5 +1,5 @@
 /*
- * Brake light output (PC10, active low).
+ * Brake light output (PC10, active high: MOSFET gate).
  */
 
 #ifndef T26_AQT7_BRAKE_LIGHT_H_

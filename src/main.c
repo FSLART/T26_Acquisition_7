@@ -19,6 +19,7 @@
 #include "can_rx.h"
 #include "can_tx.h"
 #include "debug.h"
+#include "fw_version.h"
 #include "sensors.h"
 #include "watchdog.h"
 
@@ -29,7 +30,7 @@ LOG_MODULE_REGISTER(aqt7, LOG_LEVEL_INF);
 static const struct gpio_dt_spec heartbeat = GPIO_DT_SPEC_GET(DT_ALIAS(heartbeat), gpios);
 
 int main(void) {
-    LOG_INF("T26 AQT7 starting on %s", CONFIG_BOARD);
+    LOG_INF("T26 AQT7 fw %s starting on %s", fw_version_string(), CONFIG_BOARD);
 
     /* First, so a hang anywhere in the setup below also resets the board.
      * If it fails the board still runs, unprotected: that is better than not running at all.

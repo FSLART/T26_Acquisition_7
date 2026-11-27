@@ -18,18 +18,16 @@ LOG_MODULE_REGISTER(brake_light, LOG_LEVEL_INF);
 #define PRESSURE_LEVEL_REAR 7
 #define PRESSURE_LEVEL_FRONT 7
 
-static const struct gpio_dt_spec brake_light = GPIO_DT_SPEC_GET(DT_ALIAS(brake_light), gpios);
+static const struct gpio_dt_spec gp_brake_light = GPIO_DT_SPEC_GET(DT_ALIAS(brake_light), gpios);
 
 int brake_light_init(void) {
-    if (!gpio_is_ready_dt(&brake_light)) {
+    if (!gpio_is_ready_dt(&gp_brake_light)) {
         LOG_ERR("Brake light GPIO not ready");
         return -ENODEV;
     }
 
-    /* Inactive = light off. The pin is active low in the devicetree, so this drives PC10 HIGH.
-     * (The CubeIDE firmware boots with PC10 LOW, i.e. light on until the first 50 ms task.)
-     */
-    return gpio_pin_configure_dt(&brake_light, GPIO_OUTPUT_INACTIVE);
+    /* Inactive = light off: PC10 LOW, the same level the gate pull-down holds during reset */
+    return gpio_pin_configure_dt(&gp_brake_light, GPIO_OUTPUT_INACTIVE);
 }
 
 /**
@@ -49,7 +47,7 @@ static void brake_light_thread(void *p1, void *p2, void *p3) {
         bool is_on = sensors_get().rear_brake_bar >= PRESSURE_LEVEL_REAR
                      || get_front_brake_pressure() >= PRESSURE_LEVEL_FRONT;
 
-        gpio_pin_set_dt(&brake_light, is_on);
+        gpio_pin_set_dt(&gp_brake_light, is_on);
 
         k_sleep(K_MSEC(BRAKE_LIGHT_PERIOD_MS));
     }
